@@ -20,7 +20,7 @@ def before_request():
         g.user.last_seen = datetime.utcnow()
         db.session.add(g.user)
         db.session.commit()
-        g.search_form = SearchForm
+        g.search_form = SearchForm()
 
 
 @app.errorhandler(404)
@@ -49,7 +49,7 @@ def index(page=1):
     posts = g.user.followed_posts().paginate(page, POSTS_PER_PAGE, False)
     return render_template('index.html',
                            title='Home',
-                           user=user,
+                           form=form,
                            posts=posts)
 
 

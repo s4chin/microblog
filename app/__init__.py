@@ -4,6 +4,7 @@ from flask.ext.sqlalchemy import SQLAlchemy
 from flask.ext.login import LoginManager
 from flask.ext.mail import Mail
 from flask.ext.openid import OpenID
+from .momentjs import momentjs
 from config import basedir, ADMINS, MAIL_SERVER, MAIL_PORT, MAIL_USERNAME, \
     MAIL_PASSWORD
 
@@ -15,6 +16,7 @@ lm.init_app(app)
 lm.login_view = 'login'
 oid = OpenID(app, os.path.join(basedir, 'tmp'))
 mail = Mail(app)
+app.jinja_env.globals['momentjs'] = momentjs
 
 if not app.debug:
     import logging

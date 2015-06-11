@@ -1,16 +1,19 @@
-from flask import render_template, flash, redirect, session, url_for, request, g, jsonify
+from flask import render_template, flash, redirect, session, url_for, request, \
+    g, jsonify
 from flask.ext.login import login_user, logout_user, current_user, \
     login_required
+from flask.ext.sqlalchemy import get_debug_queries
 from flask.ext.babel import gettext
 from datetime import datetime
+from guess_language import guessLanguage
 from app import app, db, lm, oid, babel
 from .forms import LoginForm, EditForm, PostForm, SearchForm
 from .models import User, Post
 from .emails import follower_notification
-from config import POSTS_PER_PAGE, MAX_SEARCH_RESULTS
-from config import LANGUAGES
-from guess_language import guessLanguage
-from translate import microsoft_translate
+from .translate import microsoft_translate
+from config import POSTS_PER_PAGE, MAX_SEARCH_RESULTS, LANGUAGES, \
+    DATABASE_QUERY_TIMEOUT
+
 
 @lm.user_loader
 def load_user(id):
@@ -33,6 +36,17 @@ def before_request():
     g.locale = get_locale()
 
 
+@app.after_request
+def after_request(response):
+    for query in get_debug_queries():
+        if query.duration >= DATABASE_QUERY_TIMEOUT:
+            app.logger.warning(
+                "SLOW QUERY: %s\nParameters: %s\nDuration: %fs\nContext: %s\n" %
+                (query.statement, query.parameters, query.duration,
+                 query.context))
+    return response
+
+
 @app.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
@@ -52,11 +66,10 @@ def index(page=1):
     form = PostForm()
     if form.validate_on_submit():
         language = guessLanguage(form.post.data)
-        if language == 'UNKNOWN' or len(language)>5:
+        if language == 'UNKNOWN' or len(language) > 5:
             language = ''
         post = Post(body=form.post.data, timestamp=datetime.utcnow(),
-                    author=g.user,
-                    language=language)
+                    author=g.user, language=language)
         db.session.add(post)
         db.session.commit()
         flash(gettext('Your post is now live!'))
@@ -188,6 +201,22 @@ def unfollow(nickname):
     return redirect(url_for('user', nickname=nickname))
 
 
+@app.route('/delete/<int:id>')
+@login_required
+def delete(id):
+    post = Post.query.get(id)
+    if post is None:
+        flash('Post not found.')
+        return redirect(url_for('index'))
+    if post.author.id != g.user.id:
+        flash('You cannot delete this post.')
+        return redirect(url_for('index'))
+    db.session.delete(post)
+    db.session.commit()
+    flash('Your post has been deleted.')
+    return redirect(url_for('index'))
+
+
 @app.route('/search', methods=['POST'])
 @login_required
 def search():
@@ -204,6 +233,7 @@ def search_results(query):
                            query=query,
                            results=results)
 
+
 @app.route('/translate', methods=['POST'])
 @login_required
 def translate():
@@ -211,5 +241,4 @@ def translate():
         'text': microsoft_translate(
             request.form['text'],
             request.form['sourceLang'],
-            request.form['destLang'])
-        })
+            request.form['destLang'])})
